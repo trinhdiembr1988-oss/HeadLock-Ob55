@@ -1,4 +1,4 @@
-name: Build AimLockOb55 APK
+name: Build AimLockOb55
 
 on:
   workflow_dispatch:
@@ -8,11 +8,10 @@ on:
 
 jobs:
   build:
-    name: Build APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Java 17
@@ -21,37 +20,63 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Gradle 8.7
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
 
-      - name: Setup Android SDK
+      - name: Find Android project
+        shell: bash
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          PROJECT_DIR="$(find . -name settings.gradle -o -name settings.gradle.kts | head -n 1 | xargs -r dirname)"
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "::error::Không tìm thấy settings.gradle"
+            find . -maxdepth 4 -type f | sort
+            exit 1
+          fi
+
+          PROJECT_DIR="${PROJECT_DIR#./}"
+
+          if [ -z "$PROJECT_DIR" ]; then
+            PROJECT_DIR="."
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project: $PROJECT_DIR"
+
+      - name: Setup Android SDK
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Check project
+        shell: bash
         run: |
+          cd "$PROJECT_DIR"
           echo "=== PROJECT ==="
-          ls -la
-          echo "=== APP ==="
-          ls -la app
-          echo "=== SDK ==="
-          sdkmanager --list_installed
+          pwd
+          echo "=== FILES ==="
+          find . -maxdepth 3 -type f | sort
 
-      - name: Build Debug APK
+      - name: Build APK
+        shell: bash
         run: |
-          gradle :app:assembleDebug --stacktrace --no-daemon
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --stacktrace :app:assembleDebug
 
       - name: Find APK
+        shell: bash
         run: |
-          echo "=== APK CREATED ==="
-          find . -type f -name "*.apk" -print
+          find "$PROJECT_DIR" -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: AimLockOb55
-          path: "app/build/outputs/apk/debug/*.apk"
+          path: "**/build/outputs/apk/**/*.apk"
           if-no-files-found: error
