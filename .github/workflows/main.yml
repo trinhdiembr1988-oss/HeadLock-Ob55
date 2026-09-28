@@ -1,4 +1,4 @@
-name: Build AimLockOb55 APK
+name: Build AimLockOb55
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -25,91 +25,87 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      - name: Extract AimLockOb55
+      - name: Extract ZIP
         shell: bash
         run: |
           set -e
 
-          ZIP_FILE="$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)"
+          ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -1)
 
-          if [ -z "$ZIP_FILE" ]; then
-            echo "::error::Không tìm thấy file ZIP"
-            ls -la
+          if [ -z "$ZIP" ]; then
+            echo "::error::Không tìm thấy file ZIP ở thư mục gốc."
             exit 1
           fi
 
-          echo "ZIP: $ZIP_FILE"
+          echo "Found: $ZIP"
 
-          mkdir -p project
-          unzip -o "$ZIP_FILE" -d project
+          mkdir -p android-project
+          unzip -q -o "$ZIP" -d android-project
 
-          echo "=== FILES AFTER EXTRACT ==="
-          find project -maxdepth 5 -type f | sort
+          echo "=== FILES ==="
+          find android-project -maxdepth 5 -type f | sort
 
-      - name: Find Android project
+      - name: Locate Android project
         shell: bash
         run: |
           set -e
 
-          SETTINGS="$(find project -type f \( \
-            -name 'settings.gradle' -o \
-            -name 'settings.gradle.kts' \
-          \) | head -n 1)"
+          SETTINGS=$(find android-project -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            | head -1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "::error::ZIP không chứa settings.gradle"
-            echo "Các file đã giải nén:"
-            find project -type f | sort
+            echo "::error::Không tìm thấy settings.gradle trong ZIP."
+            echo "ZIP hiện có các file:"
+            find android-project -type f | sort
             exit 1
           fi
 
-          PROJECT_DIR="$(dirname "$SETTINGS")"
+          PROJECT=$(dirname "$SETTINGS")
 
-          echo "Android project: $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "PROJECT=$PROJECT"
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
 
       - name: Setup Android SDK
-        shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Check Android project
+      - name: Verify Android project
         shell: bash
         run: |
-          cd "$PROJECT_DIR"
+          cd "$PROJECT"
 
-          echo "=== PROJECT DIRECTORY ==="
+          echo "=== PROJECT ==="
           pwd
 
-          echo "=== PROJECT FILES ==="
+          echo "=== FILES ==="
           find . -maxdepth 3 -type f | sort
 
-          echo "=== SETTINGS ==="
-          cat settings.gradle 2>/dev/null || cat settings.gradle.kts
+          if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
+            echo "::error::Thiếu settings.gradle."
+            exit 1
+          fi
+
+          if [ ! -d "app" ]; then
+            echo "::error::Thiếu thư mục app."
+            exit 1
+          fi
 
       - name: Build APK
         shell: bash
         run: |
-          cd "$PROJECT_DIR"
-
-          gradle \
-            --no-daemon \
-            --stacktrace \
-            :app:assembleDebug
+          cd "$PROJECT"
+          gradle --no-daemon --stacktrace :app:assembleDebug
 
       - name: Find APK
         shell: bash
         run: |
           echo "=== APK ==="
-          find "$PROJECT_DIR" \
-            -type f \
-            -name "*.apk" \
-            -print
+          find "$PROJECT" -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
