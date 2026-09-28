@@ -1,4 +1,4 @@
-name: Build AimLockOb55
+name: Build AimLockOb55 APK
 
 on:
   workflow_dispatch:
@@ -8,10 +8,11 @@ on:
 
 jobs:
   build:
+    name: Build APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Setup Java 17
@@ -20,29 +21,37 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
 
-      - name: Check Android project
+      - name: Setup Android SDK
         run: |
-          echo "=== Files ==="
-          find . -maxdepth 2 -type f | sort
-          echo "=== Gradle ==="
-          gradle --version
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Build APK
-        run: gradle assembleDebug --stacktrace
+      - name: Check project
+        run: |
+          echo "=== PROJECT ==="
+          ls -la
+          echo "=== APP ==="
+          ls -la app
+          echo "=== SDK ==="
+          sdkmanager --list_installed
+
+      - name: Build Debug APK
+        run: |
+          gradle :app:assembleDebug --stacktrace --no-daemon
 
       - name: Find APK
         run: |
-          echo "=== APK ==="
+          echo "=== APK CREATED ==="
           find . -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: AimLockOb55
-          path: "**/build/outputs/apk/**/*.apk"
+          path: "app/build/outputs/apk/debug/*.apk"
           if-no-files-found: error
